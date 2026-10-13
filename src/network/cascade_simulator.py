@@ -26,6 +26,7 @@ class CascadeSimulator:
             - isolated_facilities: Facilities cut off from the main supply depot
             - facility_status: Status, remaining hours of supply, stockout risk
         """
+        rainfall_mm = max(0.0, float(rainfall_mm))
         G = copy.deepcopy(self.base_graph)
         blocked_edges = []
         severed_set = set(severed_edges) if severed_edges else set()

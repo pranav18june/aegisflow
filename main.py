@@ -16,7 +16,10 @@ from src.agents.control_tower import MultiAgentControlTower
 from src.utils.metrics import compute_impact_scorecard
 from data.generate_scenario import generate_network_scenario
 
-def run_pipeline(rainfall_mm: float = 135.0, supply_mt: float = 25.0, sever_bridge: bool = True):
+def run_pipeline(rainfall_mm: float = 135.0, supply_mt: float = 12.0, sever_bridge: bool = True):
+    rainfall_mm = max(0.0, float(rainfall_mm))
+    supply_mt = max(0.0, float(supply_mt))
+
     print("================================================================================")
     print("🛡️  AEGISFLOW // CRISIS LIFELINE RESILIENCE ENGINE")
     print("    Autonomous Multi-Agent Allocation & Routing Solver")
@@ -76,6 +79,16 @@ def run_pipeline(rainfall_mm: float = 135.0, supply_mt: float = 25.0, sever_brid
         print(f"     Path: Depot -> {stops_str} -> Depot")
         print(f"     Metrics: {d['total_distance_km']} km | {d['est_duration_hrs']:.1f} hrs | Load: {d['load_delivered_mt']} MT / {d['capacity_mt']} MT")
 
+    aerial_manifest = strategy_comparison.get("aerial_relief_manifest", [])
+    if aerial_manifest:
+        print("\n🚁 [AERIAL RELIEF MANIFEST (ISOLATED CLINICS)]")
+        for m in aerial_manifest:
+            print(
+                f"   • {m['facility_name']}: {m['payload_needed_kg']} kg "
+                f"({m['portable_cylinders_10l']}x 10L O2 cylinders, {m['anti_venom_vials']} anti-venom vials) "
+                f"via {m['recommended_mode']}"
+            )
+
     # Agents
     tower = MultiAgentControlTower(scenario)
     agents_out = tower.execute_agent_pipeline(
@@ -93,11 +106,21 @@ def run_pipeline(rainfall_mm: float = 135.0, supply_mt: float = 25.0, sever_brid
     print(f"   {agents_out['executive_copilot']['action_recommendation']}")
     print("================================================================================\n")
 
+def non_negative_float(value: str) -> float:
+    try:
+        fval = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"Invalid numeric value: '{value}'")
+    if fval < 0.0:
+        raise argparse.ArgumentTypeError(f"Value must be non-negative (>= 0.0), got {fval}")
+    return fval
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="AegisFlow Crisis Lifeline Engine CLI")
-    parser.add_argument("--rainfall", type=float, default=135.0, help="24h monsoon rainfall (mm)")
-    parser.add_argument("--supply", type=float, default=25.0, help="Available depot stock (MT)")
-    parser.add_argument("--sever-bridge", action="store_true", default=True, help="Simulate Chooralmala bridge collapse")
+    parser.add_argument("--rainfall", type=non_negative_float, default=135.0, help="24h monsoon rainfall (mm, >= 0)")
+    parser.add_argument("--supply", type=non_negative_float, default=12.0, help="Available depot stock (MT, >= 0)")
+    parser.add_argument("--sever-bridge", dest="sever_bridge", action="store_true", default=True, help="Simulate Chooralmala bridge collapse (default)")
+    parser.add_argument("--no-sever-bridge", dest="sever_bridge", action="store_false", help="Keep Chooralmala bridge intact")
     args = parser.parse_args()
 
     run_pipeline(args.rainfall, args.supply, args.sever_bridge)

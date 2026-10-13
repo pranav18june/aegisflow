@@ -81,8 +81,10 @@ class FleetSimulation:
 
                 yield env.timeout(1.0)  # advance 1 hour
 
+        replenishment_log = []
+
         # SimPy Process: Delivery Truck Turnaround
-        def vehicle_dispatch_process(env, dispatch_info):
+        def vehicle_dispatch_process(env, dispatch_info, cycle: int = 0):
             # Outbound transit time with weather delay
             transit_out = dispatch_info["est_duration_hrs"] * 0.5 * weather_delay_factor
             yield env.timeout(max(0.5, transit_out))
@@ -94,20 +96,42 @@ class FleetSimulation:
                 # 30-min offloading time
                 yield env.timeout(0.5)
                 if fid in facility_states and not facility_states[fid]["is_severed"]:
-                    facility_states[fid]["stock"] += qty
-                    if facility_states[fid]["in_stockout"]:
+                    headroom = max(0.0, facility_states[fid]["max_capacity"] - facility_states[fid]["stock"])
+                    actual_delivered = min(qty, headroom) if cycle > 0 else qty
+                    facility_states[fid]["stock"] = min(
+                        facility_states[fid]["max_capacity"],
+                        facility_states[fid]["stock"] + actual_delivered
+                    )
+                    if facility_states[fid]["in_stockout"] and facility_states[fid]["stock"] > 0:
                         facility_states[fid]["in_stockout"] = False
+                    replenishment_log.append({
+                        "hour": round(env.now, 1),
+                        "cycle": cycle,
+                        "vehicle_id": dispatch_info["vehicle_id"],
+                        "facility_id": fid,
+                        "delivered_mt": round(actual_delivered, 2)
+                    })
 
             # Return transit to depot
             yield env.timeout(max(0.5, transit_out))
 
+        # SimPy Process: Recurring 24-Hour Depot Replenishment Wave
+        def periodic_replenishment(env, dispatches, interval_hours: float = 24.0):
+            cycle = 1
+            while True:
+                yield env.timeout(interval_hours)
+                for dispatch in dispatches:
+                    env.process(vehicle_dispatch_process(env, dispatch, cycle=cycle))
+                cycle += 1
+
         # Launch background monitors
         env.process(hospital_consumption_monitor(env))
 
-        # Launch planned dispatches if provided
+        # Launch initial planned dispatches (t=0) and recurring 24h replenishment waves
         if dispatch_plan:
             for dispatch in dispatch_plan:
-                env.process(vehicle_dispatch_process(env, dispatch))
+                env.process(vehicle_dispatch_process(env, dispatch, cycle=0))
+            env.process(periodic_replenishment(env, dispatch_plan, interval_hours=24.0))
 
         # Run full simulation horizon
         env.run(until=duration_hours)
@@ -127,5 +151,6 @@ class FleetSimulation:
             "affected_facilities": facilities_ever_stocked_out,
             "stockout_events": stockout_events,
             "stock_history": stock_history,
-            "facility_final_states": facility_states
+            "facility_final_states": facility_states,
+            "replenishment_log": replenishment_log
         }

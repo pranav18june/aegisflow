@@ -34,7 +34,8 @@ class AllocationEngine:
         ]
 
         if not targets or available_supply_mt <= 0:
-            return {"allocations": {}, "status": "NO_TARGETS_OR_SUPPLY", "total_allocated": 0.0}
+            zero_allocs = {f["id"]: 0.0 for f in targets}
+            return {"allocations": zero_allocs, "status": "NO_TARGETS_OR_SUPPLY", "total_allocated": 0.0, "method": "Zero_Allocation"}
 
         n = len(targets)
         # Variables: [x_0, ..., x_{n-1}, d_0, ..., d_{n-1}]
@@ -217,11 +218,15 @@ class AllocationEngine:
                 "deprivation_penalty": round(deprivation_score, 1)
             }
 
+        all_node_ids = {n["id"] for n in self.scenario["nodes"] if not n.get("is_depot", False)}
+        isolated_nodes = list(all_node_ids - accessible_nodes)
+        aerial_relief = self.compute_aerial_relief(isolated_nodes, facility_status)
+
         return {
             "aegisflow_optimal": {
                 "allocations": optimal["allocations"],
                 "metrics": evaluate_outcome(optimal["allocations"]),
-                "name": "AegisFlow (Dynamic MILP/LP)"
+                "name": "AegisFlow (Dynamic LP)"
             },
             "bed_count_baseline": {
                 "allocations": bed_count["allocations"],
@@ -232,5 +237,43 @@ class AllocationEngine:
                 "allocations": proximity["allocations"],
                 "metrics": evaluate_outcome(proximity["allocations"]),
                 "name": "Proximity Greedy (Nearest First)"
-            }
+            },
+            "aerial_relief_manifest": aerial_relief
         }
+
+    def compute_aerial_relief(
+        self,
+        isolated_facilities: List[str],
+        facility_status: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Computes emergency aerial/drone payload requirements for clinics cut off by severed roads.
+        Calculates 72-hour survival rations of portable 10L oxygen cylinders and trauma/anti-venom packs.
+        """
+        aerial_missions = []
+        for fid in isolated_facilities:
+            if fid not in self.nodes:
+                continue
+            node = self.nodes[fid]
+            f_stat = next((f for f in facility_status if f["id"] == fid), None)
+            hours_rem = f_stat["hours_remaining"] if f_stat else 12.0
+            daily_cons = node["daily_consumption_mt"]
+
+            # 72-hour survival buffer in kilograms
+            req_kg = max(60.0, round(daily_cons * 1000.0 * 3.0, 1))
+
+            # 1 standard D-type medical oxygen cylinder ~ 45 kg (contains ~1,400L O2)
+            cylinders_needed = max(2, int(np.ceil(req_kg / 45.0)))
+
+            aerial_missions.append({
+                "facility_id": fid,
+                "facility_name": node["name"],
+                "lat": node["lat"],
+                "lon": node["lon"],
+                "hours_to_stockout": hours_rem,
+                "payload_needed_kg": req_kg,
+                "portable_cylinders_10l": cylinders_needed,
+                "anti_venom_vials": 20 if "Tribal" in node["name"] or "Family" in node["name"] else 10,
+                "recommended_mode": "Heavy UAV Drone (50kg shuttle)" if req_kg <= 200.0 else "IAF / Coast Guard ALH Helicopter"
+            })
+        return aerial_missions

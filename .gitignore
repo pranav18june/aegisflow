@@ -27,8 +27,8 @@ env/
 venv/
 ENV/
 
-# Streamlit
-.streamlit/
+# Streamlit secrets only (keep config.toml tracked)
+.streamlit/secrets.toml
 
 # IDE
 .vscode/
