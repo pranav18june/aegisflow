@@ -351,11 +351,14 @@
     let simpyChartInstance = null;
     let lastComputedState = {};
 
+    const CARTO_API_KEY = "cb1_4iur_1_03ec3f26d2c467457434543b";
+
     function initMap() {
       mapInstance = L.map('map', { scrollWheelZoom: false }).setView([11.66, 76.08], 10);
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://carto.com/">CARTO</a> | &copy; OpenStreetMap',
-        maxZoom: 18
+      L.tileLayer(`https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?api_key=${CARTO_API_KEY}`, {
+        attribution: '&copy; <a href="https://carto.com/">CARTO</a> Basemaps | &copy; OpenStreetMap',
+        subdomains: 'abcd',
+        maxZoom: 19
       }).addTo(mapInstance);
     }
 

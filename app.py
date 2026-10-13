@@ -530,6 +530,7 @@ with tab_map:
                     "fontSize": "12px"
                 }
             },
+            map_provider="carto",
             map_style="light"
         )
         st.pydeck_chart(r)
